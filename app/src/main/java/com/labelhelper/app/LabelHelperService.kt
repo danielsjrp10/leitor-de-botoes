@@ -2,12 +2,14 @@ package com.labelhelper.app
 
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
 import android.util.Log
 import android.view.Display
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -149,12 +151,17 @@ class LabelHelperService : AccessibilityService() {
 
     /** Envia um anúncio de voz que entra no fluxo do TalkBack. */
     private fun announce(text: String) {
+        val manager = getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager
+            ?: return
+        if (!manager.isEnabled) return
+
         @Suppress("DEPRECATION")
         val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_ANNOUNCEMENT)
         event.text.add(text)
         event.packageName = packageName
         event.className = javaClass.name
-        sendAccessibilityEvent(event)
+        @Suppress("DEPRECATION")
+        manager.sendAccessibilityEvent(event)
     }
 
     override fun onInterrupt() {

@@ -1,70 +1,54 @@
 package com.labelhelper.app
 
+import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import android.widget.Button
+import android.widget.TextView
 
 /**
- * Tela única do app. Sua única função é explicar o que o app faz e levar o
- * usuário direto para a tela do Android onde ele ativa o serviço de
- * acessibilidade (isso não pode ser feito automaticamente, é uma exigência
- * de segurança do próprio Android).
+ * Tela única do app: explica o que ele faz, mostra se o serviço já está
+ * ativado, e leva direto para a tela do Android onde se ativa o serviço
+ * (isso não pode ser feito automaticamente, por segurança do próprio Android).
+ *
+ * Usa Views tradicionais (sem Jetpack Compose) - a tela é simples o
+ * suficiente para não precisar dessa dependência, e isso reduz bastante o
+ * tamanho final do APK. Funciona normalmente com o TalkBack, como qualquer
+ * tela Android padrão.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : Activity() {
+
+    private lateinit var statusView: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    HomeScreen(onOpenSettings = { openAccessibilitySettings() })
-                }
-            }
+        setContentView(R.layout.activity_main)
+
+        statusView = findViewById(R.id.status)
+        findViewById<Button>(R.id.open_settings_button).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
     }
 
-    private fun openAccessibilitySettings() {
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-}
-
-@Composable
-fun HomeScreen(onOpenSettings: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Leitor de Botões",
-            style = MaterialTheme.typography.headlineMedium
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Este app trabalha junto com o TalkBack. Quando você navegar até um " +
-                "botão ou ícone sem rótulo em qualquer outro aplicativo, ele tenta " +
-                "identificar o que é e anuncia isso por voz.\n\n" +
-                "Para ativar, toque no botão abaixo e ligue o \"Leitor de Botões\" na " +
-                "lista de serviços de acessibilidade."
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onOpenSettings) {
-            Text("Abrir configurações de acessibilidade")
+    override fun onResume() {
+        super.onResume()
+        // Atualiza sempre que a tela volta a aparecer (ex: ao voltar das
+        // configurações depois de ativar ou desativar o serviço).
+        statusView.text = if (isServiceEnabled()) {
+            getString(R.string.status_enabled)
+        } else {
+            getString(R.string.status_disabled)
         }
+    }
+
+    private fun isServiceEnabled(): Boolean {
+        val expected = ComponentName(this, LabelHelperService::class.java).flattenToString()
+        val enabledServices = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabledServices.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 }

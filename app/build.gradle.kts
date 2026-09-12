@@ -13,15 +13,8 @@ android {
         // do AccessibilityService só existe a partir dessa versão.
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
-    }
-
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
+        versionCode = 2
+        versionName = "0.2"
     }
 
     compileOptions {
@@ -32,19 +25,41 @@ android {
         jvmTarget = "17"
     }
 
+    // ATENÇÃO - ASSINATURA:
+    // Nenhuma senha ou keystore fica neste arquivo. Os quatro valores abaixo
+    // só existem como variáveis de ambiente durante a compilação no GitHub
+    // Actions, lidas a partir de "Secrets" configurados manualmente pelo
+    // dono do repositório (veja o README, seção "Assinatura da build").
+    // Sem essas variáveis, a build de release é gerada SEM assinatura
+    // (não instalável até ser assinada).
+    signingConfigs {
+        create("release") {
+            val storePath = System.getenv("RELEASE_KEYSTORE_PATH")
+            if (!storePath.isNullOrBlank()) {
+                storeFile = file(storePath)
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            if (!System.getenv("RELEASE_KEYSTORE_PATH").isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.activity:activity-compose:1.9.0")
-    implementation("androidx.compose.ui:ui:1.6.8")
-    implementation("androidx.compose.material3:material3:1.2.1")
-
-    // OCR no próprio aparelho, sem internet, sem enviar nada para servidor.
+    // OCR local, offline, sem servidor externo e sem IA generativa.
     implementation("com.google.mlkit:text-recognition:16.0.1")
 }

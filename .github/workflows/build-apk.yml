@@ -1,7 +1,5 @@
 name: Compilar e publicar APK
 
-# Roda toda vez que você enviar uma "tag" (uma etiqueta de versão, tipo v0.1)
-# e também pode ser disparado manualmente pela aba "Actions" no GitHub.
 on:
   push:
     tags:
@@ -32,40 +30,43 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Compilar o APK
-        id: build
-        continue-on-error: true
+      # Nenhuma senha/keystore fica gravada aqui. Isto só lê "Secrets" que o
+      # dono do repositório configura manualmente em:
+      # Settings > Secrets and variables > Actions > New repository secret
+      # Nomes esperados: RELEASE_KEYSTORE_BASE64, RELEASE_KEYSTORE_PASSWORD,
+      # RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD (veja o README).
+      # Se não existirem, a build de release é gerada sem assinatura.
+      - name: Preparar assinatura (se os secrets existirem)
+        env:
+          KS_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
-          set -o pipefail
-          gradle assembleDebug --stacktrace 2>&1 | tee build-output.log
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "${{ runner.temp }}/release.keystore"
+            echo "RELEASE_KEYSTORE_PATH=${{ runner.temp }}/release.keystore" >> "$GITHUB_ENV"
+            echo "RELEASE_KEYSTORE_PASSWORD=$KS_PASSWORD" >> "$GITHUB_ENV"
+            echo "RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Keystore encontrada nos secrets - a build sera assinada."
+          else
+            echo "Nenhuma keystore configurada nos secrets - build de release SEM assinatura."
+          fi
 
-      - name: Salvar log de erro no repositório (se falhou)
-        if: steps.build.outcome == 'failure'
-        run: |
-          tail -c 60000 build-output.log > build-error.txt
-          git config user.email "actions@github.com"
-          git config user.name "github-actions"
-          git add -f build-error.txt
-          git commit -m "Log de erro do build (run ${{ github.run_id }})"
-          git push origin HEAD:main
+      - name: Compilar APK de release
+        run: gradle assembleRelease
 
-      - name: Parar o job com erro (se o build falhou)
-        if: steps.build.outcome == 'failure'
-        run: exit 1
-
-      # Sempre disponível na aba "Actions" do repositório, mesmo sem criar tag
       - name: Publicar como artefato do build
         uses: actions/upload-artifact@v4
         with:
           name: leitor-de-botoes-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/release/*.apk
 
-      # Só roda quando você envia uma tag (ex: v0.1) - cria uma página de
-      # "Release" com o APK anexado, com um link direto pra baixar.
       - name: Criar release com o APK anexado
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

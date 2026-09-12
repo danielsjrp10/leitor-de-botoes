@@ -2,8 +2,19 @@
     <string name="app_name">Leitor de Botões</string>
     <string name="accessibility_service_description">
         Complementa o TalkBack: quando o foco cai em um botão ou ícone sem rótulo em
-        qualquer aplicativo, este serviço tenta ler o texto ou identificar o elemento
-        através de uma captura de tela processada no próprio aparelho, e anuncia isso
-        por voz. Nenhuma imagem é enviada para a internet.
+        qualquer aplicativo, este serviço tenta identificar o elemento usando
+        informações que o próprio Android já fornece e, quando necessário, lendo o
+        texto na região do elemento a partir de uma captura de tela processada no
+        próprio aparelho. Anuncia isso por voz, junto com o TalkBack. Nenhuma imagem
+        é enviada para a internet nem salva no aparelho.
     </string>
+    <string name="main_description">
+        Este app trabalha junto com o TalkBack. Quando você navegar até um botão ou
+        ícone sem rótulo em qualquer outro aplicativo, ele tenta identificar o que é
+        e anuncia isso por voz. Todo o processamento acontece no próprio aparelho,
+        sem internet.
+    </string>
+    <string name="status_enabled">Status: o serviço está ativado.</string>
+    <string name="status_disabled">Status: o serviço ainda não está ativado.</string>
+    <string name="open_settings_button">Abrir configurações de acessibilidade</string>
 </resources>

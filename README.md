@@ -42,7 +42,81 @@ pesado no seu computador ou celular.
 
 Veja o guia detalhado mais abaixo em "Passo a passo sem Android Studio".
 
-## Passo a passo sem Android Studio (usando um computador)
+## Assinatura da build (Release)
+
+A partir desta versão, o projeto compila uma build **release** (menor, otimizada
+com R8/minificação). Para o Android aceitar instalar essa build, ela precisa
+estar **assinada** com uma chave (keystore) — e essa chave é sua, gerada e
+guardada só por você. Eu (o assistente) não crio, não guardo e nunca vejo essa
+senha.
+
+### 1. Gerar sua própria keystore
+
+No seu computador, com o **Java (JDK) instalado** (o mesmo que o Android
+Studio usa, ou o OpenJDK 17), abra o terminal e rode:
+
+```
+keytool -genkeypair -v -keystore leitor-de-botoes-release.keystore -alias leitorDeBotoes -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Ele vai perguntar:
+- Uma **senha da keystore** (escolha uma e guarde — ex: num gerenciador de senhas).
+- Alguns dados (nome, organização, cidade...) — pode preencher ou só apertar
+  Enter para pular cada um.
+- Uma **senha da chave** — pode apertar Enter para usar a mesma da keystore.
+
+Ao final, um arquivo `leitor-de-botoes-release.keystore` estará na pasta atual.
+**Guarde esse arquivo e as senhas para sempre** — se perdê-los, futuras
+atualizações do app não poderão usar a mesma assinatura.
+
+### 2. Converter a keystore para texto (para colar como Secret)
+
+O GitHub só aceita texto em Secrets, então a keystore (um arquivo binário)
+precisa virar texto em Base64:
+
+- **Windows (PowerShell):**
+  ```
+  [Convert]::ToBase64String([IO.File]::ReadAllBytes("leitor-de-botoes-release.keystore")) | Set-Clipboard
+  ```
+  (isso já copia o resultado pra área de transferência)
+
+- **Mac:**
+  ```
+  base64 -i leitor-de-botoes-release.keystore | pbcopy
+  ```
+
+- **Linux:**
+  ```
+  base64 -w0 leitor-de-botoes-release.keystore
+  ```
+  (copie manualmente o texto que aparecer)
+
+### 3. Cadastrar os Secrets no GitHub
+
+No repositório, vá em **Settings > Secrets and variables > Actions > New
+repository secret** e crie estes quatro, um de cada vez:
+
+| Nome do Secret               | Valor                                          |
+|-------------------------------|-------------------------------------------------|
+| `RELEASE_KEYSTORE_BASE64`     | o texto Base64 copiado no passo 2               |
+| `RELEASE_KEYSTORE_PASSWORD`   | a senha da keystore que você escolheu           |
+| `RELEASE_KEY_ALIAS`           | `leitorDeBotoes` (ou o alias que você usou)     |
+| `RELEASE_KEY_PASSWORD`        | a senha da chave que você escolheu              |
+
+Esses valores ficam criptografados pelo próprio GitHub — nem eu, nem ninguém
+com acesso ao repositório, consegue vê-los depois de salvos.
+
+### 4. Compilar
+
+Depois de cadastrar os quatro secrets, é só criar e enviar uma nova tag (ex:
+`git tag v0.3 && git push origin v0.3`) — a próxima build automática já vai
+sair assinada e instalável.
+
+**Sem os secrets configurados**, a build de release ainda é gerada
+normalmente (para verificar que o código compila), mas fica **sem
+assinatura** — o Android vai recusar instalar até ela ser assinada.
+
+
 
 Isso aqui usa só o **Terminal** (tela de comandos em texto), que funciona bem
 com leitor de tela. Você não vai precisar instalar o Android Studio nem o

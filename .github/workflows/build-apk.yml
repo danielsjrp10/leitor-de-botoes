@@ -33,7 +33,25 @@ jobs:
           gradle-version: "8.9"
 
       - name: Compilar o APK
-        run: gradle assembleDebug
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle assembleDebug --stacktrace 2>&1 | tee build-output.log
+
+      - name: Salvar log de erro no repositório (se falhou)
+        if: steps.build.outcome == 'failure'
+        run: |
+          tail -c 60000 build-output.log > build-error.txt
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git add -f build-error.txt
+          git commit -m "Log de erro do build (run ${{ github.run_id }})"
+          git push origin HEAD:main
+
+      - name: Parar o job com erro (se o build falhou)
+        if: steps.build.outcome == 'failure'
+        run: exit 1
 
       # Sempre disponível na aba "Actions" do repositório, mesmo sem criar tag
       - name: Publicar como artefato do build

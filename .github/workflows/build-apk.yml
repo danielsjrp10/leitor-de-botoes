@@ -1,0 +1,53 @@
+name: Compilar e publicar APK
+
+# Roda toda vez que você enviar uma "tag" (uma etiqueta de versão, tipo v0.1)
+# e também pode ser disparado manualmente pela aba "Actions" no GitHub.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar o SDK do Android
+        uses: android-actions/setup-android@v3
+
+      - name: Configurar o Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Compilar o APK
+        run: gradle assembleDebug
+
+      # Sempre disponível na aba "Actions" do repositório, mesmo sem criar tag
+      - name: Publicar como artefato do build
+        uses: actions/upload-artifact@v4
+        with:
+          name: leitor-de-botoes-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+
+      # Só roda quando você envia uma tag (ex: v0.1) - cria uma página de
+      # "Release" com o APK anexado, com um link direto pra baixar.
+      - name: Criar release com o APK anexado
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

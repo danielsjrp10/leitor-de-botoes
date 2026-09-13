@@ -12,7 +12,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.Executors
@@ -21,11 +20,18 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * Serviço de acessibilidade que roda JUNTO com o TalkBack (não substitui ele).
  *
- * Ordem de decisão para cada elemento clicável sem rótulo:
+ * Um elemento só é considerado "sem rótulo" se: não tem texto/contentDescription
+ * próprios, não tem um `labeledBy` com texto, e nenhum descendente visível já
+ * fornece um texto que o TalkBack leria sozinho.
+ *
+ * Ordem de decisão para cada elemento clicável realmente sem rótulo:
  * 1. tooltipText / hintText - fornecidos pelo próprio app, se existirem.
  * 2. resourceId conhecido - só quando um segmento do id bate exatamente com um
  *    dicionário fixo (nunca anuncia o id em si, só uma tradução conhecida).
  * 3. OCR local (ML Kit) apenas na área do elemento, como último recurso.
+ *
+ * A lógica de decisão "pura" (sem dependências do Android) fica em
+ * LabelHeuristics.kt, e é coberta por testes automatizados.
  *
  * Nenhuma imagem sai do aparelho. Nada é salvo em disco.
  */
@@ -39,66 +45,24 @@ class LabelHelperService : AccessibilityService() {
     // o número não vai bater mais e o resultado é descartado.
     private val requestSequence = AtomicLong(0)
 
-    // "Cache" de um único elemento, para não repetir OCR se o foco voltar pro
-    // mesmo controle logo em seguida. Não é uma lista, não persiste em disco.
+    // "Cache" de um único elemento, para não repetir trabalho (nem OCR, nem
+    // anúncio) se o foco voltar pro mesmo controle logo em seguida. Guarda
+    // também o caso "nada encontrado" (texto null), para não tentar OCR de
+    // novo à toa. Não é uma lista, não persiste em disco.
     private var lastProcessedKey: String? = null
     private var lastAnnouncedText: String? = null
 
     companion object {
         private const val TAG = "LabelHelperService"
 
-        // Faixas de "quanto da tela o elemento ocupa" -> tamanho máximo de texto
-        // aceito como rótulo plausível. Não é uma trava rígida: elementos grandes
-        // continuam sendo analisados, só ficamos mais exigentes com o tamanho do
-        // texto aceito, porque um contêiner enorme marcado como clicável por engano
-        // tende a devolver um bloco de texto longo, enquanto um botão grande
-        // legítimo (ex.: um botão "Continuar" de largura total) normalmente ainda
-        // tem um texto curto.
-        private const val AREA_SMALL = 0.15f
-        private const val AREA_MEDIUM = 0.35f
-        private const val AREA_LARGE = 0.60f
-        private const val LEN_SMALL_AREA = 60
-        private const val LEN_MEDIUM_AREA = 45
-        private const val LEN_LARGE_AREA = 30
-        private const val LEN_HUGE_AREA = 20
-
-        // Proporção mínima de caracteres "úteis" (letra/número/espaço) no texto
-        // reconhecido. Abaixo disso, é provável que seja ruído do OCR.
-        private const val MIN_USEFUL_CHAR_RATIO = 0.6f
-
         // Elementos menores que isso (em dp) são ignorados: candidatos demais
         // pequenos costumam ser marcadores invisíveis, não botões de verdade.
         private const val MIN_ELEMENT_DP = 12f
 
-        // Dicionário fixo: só usado quando um SEGMENTO do resourceId bate
-        // EXATAMENTE com uma destas chaves (nunca por conter/substring), e o
-        // que é anunciado é sempre a tradução - nunca o id original.
-        private val KNOWN_ID_TOKENS = mapOf(
-            "back" to "Voltar",
-            "close" to "Fechar",
-            "cancel" to "Cancelar",
-            "menu" to "Menu",
-            "search" to "Buscar",
-            "settings" to "Configurações",
-            "delete" to "Excluir",
-            "remove" to "Remover",
-            "add" to "Adicionar",
-            "create" to "Criar",
-            "edit" to "Editar",
-            "save" to "Salvar",
-            "share" to "Compartilhar",
-            "send" to "Enviar",
-            "play" to "Reproduzir",
-            "pause" to "Pausar",
-            "next" to "Próximo",
-            "previous" to "Anterior",
-            "home" to "Início",
-            "help" to "Ajuda",
-            "refresh" to "Atualizar",
-            "download" to "Baixar",
-            "upload" to "Enviar arquivo",
-            "check" to "Confirmar"
-        )
+        // Limite de profundidade ao checar se algum descendente já tem texto
+        // que o TalkBack leria sozinho. Suficiente para os padrões comuns
+        // (ícone + texto dentro de um container clicável) sem custo alto.
+        private const val MAX_DESCENDANT_DEPTH = 3
     }
 
     override fun onDestroy() {
@@ -115,6 +79,11 @@ class LabelHelperService : AccessibilityService() {
         val requestId = requestSequence.incrementAndGet()
         try {
             handleFocusedNode(node, requestId)
+        } catch (e: Exception) {
+            // Uma exceção inesperada aqui (ex: nó ficou inválido no meio do
+            // processamento, por uma mudança rápida de tela em outro app) não
+            // pode derrubar o serviço inteiro - só registra e segue.
+            Log.e(TAG, "Erro inesperado ao processar elemento focado - evento ignorado", e)
         } finally {
             @Suppress("DEPRECATION")
             node.recycle()
@@ -135,30 +104,47 @@ class LabelHelperService : AccessibilityService() {
 
         val key = elementKey(node, bounds)
 
-        // Mesmo elemento de antes: reaproveita o resultado, sem refazer OCR.
-        if (key == lastProcessedKey && lastAnnouncedText != null) {
-            announce(lastAnnouncedText!!)
+        // Mesmo elemento de antes: reaproveita o resultado (inclusive o
+        // "nada encontrado"), sem refazer OCR.
+        if (key == lastProcessedKey) {
+            lastAnnouncedText?.let { announce(it) }
             return
         }
 
         // 1) tooltipText / hintText - vêm prontos do próprio app, alta confiança.
         node.tooltipText?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            rememberAndAnnounce(key, it)
+            rememberResult(key, it)
             return
         }
         node.hintText?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let {
-            rememberAndAnnounce(key, it)
+            rememberResult(key, it)
             return
         }
 
         // 2) resourceId conhecido - confiança média (é uma tradução de um id interno).
-        lookupKnownResourceId(node)?.let {
-            rememberAndAnnounce(key, "Provavelmente: $it")
+        LabelHeuristics.matchKnownResourceToken(
+            LabelHeuristics.tokensFromResourceId(node.viewIdResourceName ?: "")
+        )?.let {
+            rememberResult(key, "Provavelmente: $it")
             return
         }
 
         // 3) OCR local - último recurso.
-        captureAndDescribe(bounds, key, requestId)
+        val displayId = resolveDisplayId(node)
+        captureAndDescribe(bounds, key, requestId, displayId)
+    }
+
+    private fun resolveDisplayId(node: AccessibilityNodeInfo): Int {
+        // Usa a tela onde a janela do elemento realmente está (relevante em
+        // aparelhos dobráveis, Android Auto, ou telas externas conectadas),
+        // em vez de assumir sempre a tela principal do aparelho.
+        val window = node.window ?: return Display.DEFAULT_DISPLAY
+        return try {
+            window.displayId
+        } finally {
+            @Suppress("DEPRECATION")
+            window.recycle()
+        }
     }
 
     private fun elementKey(node: AccessibilityNodeInfo, bounds: Rect): String {
@@ -166,10 +152,51 @@ class LabelHelperService : AccessibilityService() {
         return "${node.windowId}|$resId|${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}"
     }
 
+    /**
+     * Um elemento só é "sem rótulo" se: não tem texto/descrição próprios, não
+     * tem um `labeledBy` com texto, e nenhum descendente visível já tem texto
+     * que o TalkBack leria sozinho (padrão comum: container clicável com um
+     * ícone + um TextView dentro). Isso evita processar à toa - e possivelmente
+     * anunciar algo redundante ou conflitante - em botões que o TalkBack já
+     * sabe descrever sem ajuda nenhuma.
+     */
     private fun isUnlabeled(node: AccessibilityNodeInfo): Boolean {
-        val hasText = !node.text.isNullOrBlank()
-        val hasDescription = !node.contentDescription.isNullOrBlank()
-        return !hasText && !hasDescription
+        val hasOwnLabel = !node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank()
+        if (hasOwnLabel) return false
+        if (hasLabeledByText(node)) return false
+        if (hasLabeledDescendant(node)) return false
+        return true
+    }
+
+    /** Verifica a relação explícita android:labelFor / labeledBy. */
+    private fun hasLabeledByText(node: AccessibilityNodeInfo): Boolean {
+        val labelNode = node.labeledBy ?: return false
+        return try {
+            !labelNode.text.isNullOrBlank() || !labelNode.contentDescription.isNullOrBlank()
+        } finally {
+            @Suppress("DEPRECATION")
+            labelNode.recycle()
+        }
+    }
+
+    /** Busca (com profundidade limitada) um filho visível e importante para acessibilidade com texto próprio. */
+    private fun hasLabeledDescendant(node: AccessibilityNodeInfo, depth: Int = 0): Boolean {
+        if (depth >= MAX_DESCENDANT_DEPTH) return false
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            try {
+                if (!child.isVisibleToUser) continue
+                if (!child.isImportantForAccessibility) continue
+                if (!child.text.isNullOrBlank() || !child.contentDescription.isNullOrBlank()) {
+                    return true
+                }
+                if (hasLabeledDescendant(child, depth + 1)) return true
+            } finally {
+                @Suppress("DEPRECATION")
+                child.recycle()
+            }
+        }
+        return false
     }
 
     /**
@@ -182,27 +209,12 @@ class LabelHelperService : AccessibilityService() {
         return node.actionList.any { it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_CLICK.id }
     }
 
-    /** Busca um rótulo conhecido a partir do resourceId, por correspondência exata de token. */
-    private fun lookupKnownResourceId(node: AccessibilityNodeInfo): String? {
-        val resourceName = node.viewIdResourceName ?: return null
-        val lastSegment = resourceName.substringAfterLast('/')
-        val tokens = lastSegment
-            .replace(Regex("([a-z0-9])([A-Z])"), "$1_$2") // separa camelCase
-            .lowercase()
-            .split(Regex("[^a-z0-9]+"))
-            .filter { it.isNotBlank() }
-        for (token in tokens) {
-            KNOWN_ID_TOKENS[token]?.let { return it }
-        }
-        return null
-    }
-
     @SuppressLint("NewApi")
-    private fun captureAndDescribe(bounds: Rect, key: String, requestId: Long) {
+    private fun captureAndDescribe(bounds: Rect, key: String, requestId: Long, displayId: Int) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
 
         takeScreenshot(
-            Display.DEFAULT_DISPLAY,
+            displayId,
             executor,
             object : TakeScreenshotCallback {
                 override fun onSuccess(result: ScreenshotResult) {
@@ -252,10 +264,8 @@ class LabelHelperService : AccessibilityService() {
             recognizer.process(image)
                 .addOnSuccessListener { visionText ->
                     if (requestId != requestSequence.get()) return@addOnSuccessListener
-                    extractPlausibleLabel(visionText, areaFraction)?.let { label ->
-                        rememberAndAnnounce(key, "Provavelmente: $label")
-                    }
-                    // Se não achou nada confiável, fica em silêncio - não anuncia ruído.
+                    val label = LabelHeuristics.isPlausibleLabel(visionText.text, areaFraction)
+                    rememberResult(key, label?.let { "Provavelmente: $it" })
                 }
                 .addOnFailureListener { error ->
                     Log.w(TAG, "Erro no reconhecimento de texto", error)
@@ -271,35 +281,11 @@ class LabelHelperService : AccessibilityService() {
         }
     }
 
-    /**
-     * Decide se o texto reconhecido é um rótulo plausível, usando a fração da
-     * área da tela como sinal de alerta (não como bloqueio): quanto maior a
-     * área do elemento, mais rigoroso o limite de tamanho de texto aceito.
-     */
-    private fun extractPlausibleLabel(visionText: Text, areaFraction: Float): String? {
-        val cleaned = visionText.text.trim().replace(Regex("\\s+"), " ")
-        if (cleaned.isEmpty()) return null
-        if (cleaned.none { it.isLetterOrDigit() }) return null
-
-        val maxLength = when {
-            areaFraction <= AREA_SMALL -> LEN_SMALL_AREA
-            areaFraction <= AREA_MEDIUM -> LEN_MEDIUM_AREA
-            areaFraction <= AREA_LARGE -> LEN_LARGE_AREA
-            else -> LEN_HUGE_AREA
-        }
-        if (cleaned.length > maxLength) return null
-
-        val usefulChars = cleaned.count { it.isLetterOrDigit() || it.isWhitespace() }
-        val usefulRatio = usefulChars.toFloat() / cleaned.length
-        if (usefulRatio < MIN_USEFUL_CHAR_RATIO) return null
-
-        return cleaned
-    }
-
-    private fun rememberAndAnnounce(key: String, text: String) {
+    /** Guarda o resultado (mesmo quando não há nada a anunciar) e anuncia se houver texto. */
+    private fun rememberResult(key: String, text: String?) {
         lastProcessedKey = key
         lastAnnouncedText = text
-        announce(text)
+        text?.let { announce(it) }
     }
 
     /** Envia um anúncio de voz que entra no fluxo do TalkBack. */

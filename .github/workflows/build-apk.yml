@@ -55,7 +55,25 @@ jobs:
           fi
 
       - name: Compilar APK de release
-        run: gradle assembleRelease
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          gradle assembleRelease 2>&1 | tee build-log.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: Salvar log de erro no repositório (só se a build falhou)
+        if: steps.build.outputs.exit_code != '0'
+        run: |
+          git config user.email "ci@local"
+          git config user.name "CI Log Bot"
+          mkdir -p ci-logs
+          cp build-log.txt "ci-logs/build-log-${{ github.run_id }}.txt"
+          git add ci-logs
+          git commit -m "Log de erro do build (run ${{ github.run_id }})"
+          git push origin HEAD:main
+          exit 1
 
       - name: Publicar como artefato do build
         uses: actions/upload-artifact@v4

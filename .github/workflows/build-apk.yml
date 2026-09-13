@@ -54,6 +54,9 @@ jobs:
             echo "Nenhuma keystore configurada nos secrets - build de release SEM assinatura."
           fi
 
+      - name: Compilar APK de debug (assinada automaticamente, para testes)
+        run: gradle assembleDebug
+
       - name: Compilar APK de release
         id: build
         continue-on-error: true
@@ -79,12 +82,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: leitor-de-botoes-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
 
-      - name: Criar release com o APK anexado
+      - name: Criar release com os APKs anexados
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

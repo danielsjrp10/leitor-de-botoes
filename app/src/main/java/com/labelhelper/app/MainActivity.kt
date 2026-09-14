@@ -30,6 +30,9 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.open_settings_button).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
+        findViewById<Button>(R.id.open_test_screen_button).setOnClickListener {
+            startActivity(Intent(this, TestActivity::class.java))
+        }
     }
 
     override fun onResume() {

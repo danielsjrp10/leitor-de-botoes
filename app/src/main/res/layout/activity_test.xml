@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/test_screen_intro"
+            android:textSize="16sp" />
+
+        <!-- CASO 1: texto real desenhado na tela, mas escondido do leitor de
+             tela (importantForAccessibility=no). So o OCR pode encontrar isso.
+             Esperado: "Provavelmente: Teste um dois tres" -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/test_case_1_label"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:id="@+id/test_ocr_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#DDDDDD"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:importantForAccessibility="no"
+                android:text="Teste um dois tres"
+                android:textSize="22sp" />
+        </LinearLayout>
+
+        <!-- CASO 2: resourceId conhecido (contem "close"), sem texto nenhum.
+             Esperado: "Provavelmente: Fechar", sem precisar de OCR. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/test_case_2_label"
+            android:textStyle="bold" />
+
+        <View
+            android:id="@+id/btn_close_test"
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:layout_marginTop="8dp"
+            android:background="#BBBBBB"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- CASO 3: container clicavel com filho JA visivel para acessibilidade
+             (sem importantForAccessibility=no). O TalkBack ja deveria ler o
+             texto do filho sozinho. Esperado: o Leitor de Botoes fica em
+             SILENCIO (nao deve repetir nem atrapalhar). -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:text="@string/test_case_3_label"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#DDDDDD"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ja tem rotulo"
+                android:textSize="22sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

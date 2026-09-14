@@ -17,4 +17,20 @@
     <string name="status_enabled">Status: o serviço está ativado.</string>
     <string name="status_disabled">Status: o serviço ainda não está ativado.</string>
     <string name="open_settings_button">Abrir configurações de acessibilidade</string>
+    <string name="open_test_screen_button">Abrir tela de teste (diagnóstico)</string>
+    <string name="test_screen_title">Tela de teste</string>
+    <string name="test_screen_intro">
+        Esta tela serve só para verificar se o serviço está processando os
+        elementos corretamente, com três casos conhecidos. Ative o serviço
+        antes de navegar por aqui com o TalkBack.
+    </string>
+    <string name="test_case_1_label">
+        Caso 1 - só o OCR encontra: espera-se ouvir \"Provavelmente: Teste um dois tres\"
+    </string>
+    <string name="test_case_2_label">
+        Caso 2 - resourceId conhecido: espera-se ouvir \"Provavelmente: Fechar\"
+    </string>
+    <string name="test_case_3_label">
+        Caso 3 - já tem rótulo pelo filho: espera-se SILÊNCIO do Leitor de Botões
+    </string>
 </resources>

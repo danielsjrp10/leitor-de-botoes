@@ -38,5 +38,12 @@
             android:layout_marginTop="16dp"
             android:text="@string/open_settings_button" />
 
+        <Button
+            android:id="@+id/open_test_screen_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/open_test_screen_button" />
+
     </LinearLayout>
 </ScrollView>

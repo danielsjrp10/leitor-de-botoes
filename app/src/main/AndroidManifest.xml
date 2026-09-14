@@ -15,6 +15,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".TestActivity"
+            android:exported="false"
+            android:label="@string/test_screen_title" />
+
         <!-- Serviço de acessibilidade: roda em segundo plano junto com o TalkBack -->
         <service
             android:name=".LabelHelperService"

@@ -33,7 +33,33 @@ internet.
   para ícones de interface, o que é mais trabalhoso e menos confiável.
 - A precisão do OCR depende do contraste e do tamanho do texto no botão.
 
-## Como compilar SEM Android Studio (recomendado)
+## Limitações conhecidas (decisão registrada)
+
+**Ícones sem nenhum texto (ex: uma seta, uma engrenagem, três linhas de menu)
+não são identificados.** Isso foi investigado e decidido conscientemente, não
+é um esquecimento:
+
+- O ML Kit Image Labeling (reconhecedor de imagens local do Google) foi
+  descartado depois de pesquisa: seu modelo é treinado em fotos do mundo real
+  (categorias como "fogueira", "aquário", "roda-gigante"), não em ícones de
+  interface - rodar isso em recortes de ícones muito provavelmente não geraria
+  palpites úteis.
+- Verificamos como o próprio Google resolve esse mesmo problema no TalkBack: a
+  única solução existente usa IA generativa, seja em um servidor (exige
+  internet) ou localmente, mas só em aparelhos Pixel 9 ou mais novos. Ou seja,
+  nem o Google conseguiu resolver "reconhecer ícone sem texto, offline, em
+  qualquer aparelho, sem IA generativa" - confirmando que essa é uma limitação
+  técnica real da combinação de requisitos deste projeto (offline + qualquer
+  aparelho + sem IA generativa), não falta de esforço.
+
+**Recomendação complementar:** o TalkBack (desde a versão 12.1) já tem um
+recurso nativo de transcrição automática de texto em imagens sem rótulo,
+processado no aparelho, sem internet. Vale ativar em Configurações >
+Acessibilidade > TalkBack > Configurações > Áudio > Descrições automáticas -
+é gratuito, do próprio Android, e complementa (não substitui) o que este app
+faz para elementos clicáveis em geral (não só imagens).
+
+
 
 Este projeto já vem com um arquivo em `.github/workflows/build-apk.yml` que
 faz o **GitHub** compilar o APK pra você, nos servidores dele. Você só
